@@ -28,8 +28,8 @@ func Distill(rawHTML string) (*Node, error) {
 
 	// Traverse the body
 	doc.Find("body").Each(func(i int, s *goquery.Selection) {
-		for _, n := range s.Nodes() {
-			processNode(n, root, &linkCounter, &btnCounter, &inputCounter)
+		for _, n := range s.Nodes {
+			processNode(n, root, &linkCounter, &btnCounter, &inputCounter, "/html/body")
 		}
 	})
 
@@ -37,7 +37,7 @@ func Distill(rawHTML string) (*Node, error) {
 }
 
 // processNode recursively distills an HTML node into an internal Node
-func processNode(n *html.Node, parent *Node, linkCount, btnCount, inputCount *int) {
+func processNode(n *html.Node, parent *Node, linkCount, btnCount, inputCount *int, currentXPath string) {
 	if n.Type == html.TextNode {
 		content := strings.TrimSpace(n.Data)
 		if content != "" {
@@ -54,8 +54,19 @@ func processNode(n *html.Node, parent *Node, linkCount, btnCount, inputCount *in
 	}
 
 	tagName := strings.ToLower(n.Data)
+
+	// Calculate XPath for this specific element
+	elementIndex := 1
+	for prev := n.PrevSibling; prev != nil; prev = prev.PrevSibling {
+		if prev.Type == html.ElementNode && strings.ToLower(prev.Data) == tagName {
+			elementIndex++
+		}
+	}
+	myXPath := fmt.Sprintf("%s/%s[%d]", currentXPath, tagName, elementIndex)
+
 	newNode := &Node{
 		Type:       tagName,
+		XPath:      myXPath,
 		Attributes: make(map[string]string),
 	}
 
@@ -98,14 +109,14 @@ func processNode(n *html.Node, parent *Node, linkCount, btnCount, inputCount *in
 	default:
 		// Ignore unknown tags but process children
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			processNode(c, parent, linkCount, btnCount, inputCount)
+			processNode(c, parent, linkCount, btnCount, inputCount, myXPath)
 		}
 		return
 	}
 
 	// Process children for the current element
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		processNode(c, newNode, linkCount, btnCount, inputCount)
+		processNode(c, newNode, linkCount, btnCount, inputCount, myXPath)
 	}
 
 	// Post-processing: compress nodes if they are just wrappers
